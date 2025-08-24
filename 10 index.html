@@ -1,0 +1,94 @@
+﻿<script>
+  const config = {
+    formUrl: "https://docs.google.com/forms/d/e/1FAIpQLScLdJbk7skewdX8IHr786qeXki2dOAaBp7dUt8Yy9Zyw5f1dA/viewform?embedded=true",
+    timezone: "Asia/Kolkata",
+    slots: [
+      { hour: 12, minute: 20, duration: 2 }, // 12:20 PM → 12:22 PM
+      { hour: 13, minute: 30, duration: 2 }  // 1:30 PM → 1:32 PM
+    ]
+  };
+
+  let serverTime;
+  let offset = 0;
+  let lastTimeString = '';
+
+  async function fetchServerTime() {
+    try {
+      const res = await fetch(`https://worldtimeapi.org/api/timezone/${config.timezone}`);
+      const data = await res.json();
+      serverTime = new Date(data.datetime);
+      offset = Date.now() - serverTime.getTime();
+    } catch {
+      serverTime = new Date();
+      offset = 0;
+    }
+  }
+
+  function getCurrentIST() {
+    return new Date(Date.now() - offset);
+  }
+
+  function getNextSlot(now) {
+    for (let slot of config.slots) {
+      let start = new Date(now);
+      start.setHours(slot.hour, slot.minute, 0, 0);
+      let end = new Date(start.getTime() + slot.duration * 60000);
+      if (now < end) return { start, end };
+    }
+    // If all slots over today → pick tomorrow’s first slot
+    let tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(config.slots[0].hour, config.slots[0].minute, 0, 0);
+    let end = new Date(tomorrow.getTime() + config.slots[0].duration * 60000);
+    return { start: tomorrow, end };
+  }
+
+  function updateCountdown() {
+    const now = getCurrentIST();
+    const { start, end } = getNextSlot(now);
+
+    if (now >= start && now < end) {
+      // During test slot
+      document.getElementById("main-countdown").style.display = "none";
+      document.getElementById("form-container").style.display = "block";
+      document.getElementById("test-timer").style.display = "block";
+      document.getElementById("heading").innerText = "Test time remaining:";
+      let diff = end - now;
+      let mins = Math.floor((diff / (1000 * 60)) % 60);
+      let secs = Math.floor((diff / 1000) % 60);
+      const timeString = `${mins}:${secs}`;
+      if (timeString !== lastTimeString) {
+        document.getElementById("test-timer").innerText =
+          `${String(mins).padStart(2, '0')} Minutes : ${String(secs).padStart(2, '0')} Seconds`;
+        lastTimeString = timeString;
+      }
+    } else {
+      // Before next test slot
+      document.getElementById("form-container").style.display = "none";
+      document.getElementById("test-timer").style.display = "none";
+      document.getElementById("heading").innerText = "Next test starts in:";
+      let diff = start - now;
+      let hrs = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      let mins = Math.floor((diff / (1000 * 60)) % 60);
+      let secs = Math.floor((diff / 1000) % 60);
+      const timeString = `${hrs}:${mins}:${secs}`;
+      if (timeString !== lastTimeString) {
+        document.getElementById("main-countdown").innerHTML = `
+          <div class="time-box"><div class="number">${String(hrs).padStart(2, '0')}</div><div class="label">Hours</div></div>
+          <div class="time-box"><div class="number">${String(mins).padStart(2, '0')}</div><div class="label">Minutes</div></div>
+          <div class="time-box"><div class="number">${String(secs).padStart(2, '0')}</div><div class="label">Seconds</div></div>
+        `;
+        lastTimeString = timeString;
+      }
+    }
+  }
+
+  fetchServerTime().then(() => {
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+  });
+
+  document.getElementById("reset-timer").onclick = () => {
+    fetchServerTime().then(updateCountdown);
+  };
+</script>
